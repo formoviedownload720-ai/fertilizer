@@ -100,15 +100,13 @@ if calculate:
     **Ordinary Least Squares** finds the best \( a \) and \( b \) by minimising the sum of squared errors  
     (the vertical distances from each point to the line).
 
-    In this thesis, three separate lines were fitted:
+    In this thesis, three separate lines were fitted from 16 paired observations:
 
-    | Nutrient   | Slope \( a \) | Intercept \( b \) | Meaning |
-    |------------|---------------|-------------------|---------|
-    | Nitrogen   | 0.8255        | 0.05026           | Sensor slightly over-responds |
-    | Phosphorus | 0.07761       | 14.55             | Almost no response (bad channel) |
-    | Potassium  | 0.5840        | 0.2508            | Good, usable response |
-
-    These numbers came from 16 paired observations after a controlled fertilizer experiment.
+    | Nutrient   | Slope \( a \) | Intercept \( b \) | p-value   | Meaning |
+    |------------|---------------|-------------------|-----------|---------|
+    | Nitrogen   | 0.8255        | 0.05026           | 0.029     | Weak but usable |
+    | Phosphorus | 0.07761       | 14.55             | 0.458     | Almost no relationship |
+    | Potassium  | 0.5840        | 0.2508            | **< 0.001** | Strong & trustworthy |
     """)
 
     n_cal, p_cal, k_cal = calibrate_sensor(n_raw, p_raw, k_raw)
@@ -137,13 +135,40 @@ K_corrected = 0.5840 × {k_raw:.3f} + 0.2508
             = {k_cal:.3f} meq/100g""")
         st.metric("Calibrated K", f"{k_cal:.3f} meq/100g")
 
-    st.info("""
-    **Thesis findings about the regression**  
-    - Potassium: strong relationship (p < 0.001) → trustworthy  
-    - Nitrogen: weak but usable (p = 0.029)  
-    - Phosphorus: slope almost zero → the P channel is almost useless  
-    This is why calibration error dominates the final dose error.
-    """)
+    # ---------- Detailed explanation of p-value ----------
+    with st.expander("🔍 Why is Potassium (p < 0.001) called trustworthy? Click to understand", expanded=False):
+        st.markdown("""
+        ### What the p-value means
+
+        When we fit the line \( y = a x + b \), we test this hypothesis:
+
+        - **Null hypothesis (H₀)**: slope \( a = 0 \)  
+          (the sensor has **no real relationship** with true laboratory potassium)
+        - **Alternative**: slope \( a \neq 0 \)
+
+        The **p-value** is the probability of getting a slope as large as 0.5840  
+        **if the null hypothesis were true** (i.e., if there was really no relationship).
+
+        | Nutrient   | Slope   | p-value   | Interpretation |
+        |------------|---------|-----------|----------------|
+        | Potassium  | 0.5840  | **< 0.001** | Less than 0.1% chance this happened by luck → **very strong evidence** |
+        | Nitrogen   | 0.8255  | 0.029     | Significant but weak |
+        | Phosphorus | 0.07761 | 0.458     | No evidence of real relationship |
+
+        ### Why p < 0.001 is considered strong
+
+        In science:
+        - p < 0.05  → statistically significant
+        - p < 0.01  → highly significant
+        - **p < 0.001 → extremely strong evidence**
+
+        Because the p-value for potassium is far below 0.001, we can be confident  
+        that the sensor **does respond** to real changes in exchangeable potassium.
+
+        Additional supporting evidence from the thesis:
+        - The potassium channel tracked added MoP better than the other channels (R² ≈ 0.925)
+        - The slope is reasonably large and its standard error is relatively small
+        """)
 
     st.divider()
 
@@ -186,20 +211,11 @@ K_corrected = 0.5840 × {k_raw:.3f} + 0.2508
     This simple formula reproduces **all 999 tabulated doses** with R² ≈ 0.999999.
 
     That means the Random Forest was essentially **memorising this closed-form equation**.
-
-    Therefore, in this learning app we implement the closed-form directly.  
-    You get the same numbers the Random Forest would have produced,  
-    but you can also see every intermediate step.
     """)
 
     x, x_n, x_p, x_k = soil_test_index(n_cal, p_cal, k_cal)
 
     st.subheader("Step 1 – Build the soil-test index \( x \)")
-
-    st.markdown("""
-    The original FRG table uses a normalised fertility index.  
-    Higher \( x \) = better soil = less fertilizer needed.
-    """)
 
     st.code(f"""
 x_N = clip( ({n_cal:.4f} - 0.03) / 0.27 ) = {x_n:.4f}
@@ -217,10 +233,51 @@ x = 0.45·x_N + 0.30·x_P + 0.25·x_K = {x:.4f}
     urea_g, mop_g, tsp_g = recommend_doses(crop, x)
 
     st.markdown(f"**Crop selected:** `{crop}`")
-    st.write(f"Maximum doses when soil is completely depleted (x = 0):")
+    st.write("Maximum doses when soil is completely depleted (x = 0):")
     st.write(f"- Urea max = **{dmax['urea']} g/decimal**")
     st.write(f"- MoP  max = **{dmax['mop']} g/decimal**")
     st.write(f"- TSP  max = **{dmax['tsp']} g/decimal**")
+
+    # ---------- Detailed explanation of D_max source ----------
+    with st.expander("🔍 Where do these maximum dose values come from? Click to understand", expanded=False):
+        st.markdown("""
+        ### Source of the maximum doses
+
+        These numbers come directly from **Table 3.6** of the thesis:
+
+        > Composition of the recommendation dataset derived from the guide
+
+        | Crop and variety       | Max Urea | Max MoP | Max TSP |
+        |------------------------|----------|---------|---------|
+        | Aus (BRRI 27)          | 773      | 486     | 324     |
+        | Aus (BRRI 42)          | 773      | 486     | 324     |
+        | B. Aman                | 422      | 324     | 243     |
+        | Boro (BRRI 28)         | 1687     | 972     | 567     |
+        | **Boro (BRRI 29)**     | **2109** | **1231**| **648** |
+        | Boro (BRRI 36)         | 1406     | 810     | 486     |
+        | T. Aman (BRRI 25)      | 843      | 648     | 324     |
+        | T. Aman (BRRI 51)      | 1054     | 810     | 405     |
+        | T. Aman (Binadhan 9)   | 633      | 486     | 243     |
+
+        ### What do these numbers mean?
+
+        They are the **maximum recommended fertilizer doses** when the soil is considered  
+        completely depleted (soil-test index \( x = 0 \)).
+
+        The original source is the official **Fertilizer Recommendation Guide 2018 (FRG-2018)**  
+        published by the Bangladesh Agricultural Research Council (BARC).
+
+        The thesis authors extracted these values from the FRG-2018 tables for the nine rice varieties.
+
+        In the closed-form equation:
+
+        $$
+        D = D_{\\max} \\times \\max\\left(0,\\; 1 - \\frac{x}{x_0}\\right)
+        $$
+
+        - When \( x = 0 \), the dose becomes exactly \( D_{\\max} \)
+        - That is why the app shows these values as “maximum doses”
+        """)
 
     st.code(f"""
 Urea = {dmax['urea']} × max(0, 1 - {x:.4f}/1.000) = {urea_g:.2f} g/decimal
@@ -259,7 +316,9 @@ else:
 
     You will see:
     - How **Ordinary Least Squares regression** calibrates the sensor (Stage A)
+    - Why **Potassium p < 0.001** is considered trustworthy
     - How **Random Forest** works and why the closed-form equation is equivalent (Stage B)
+    - Where the maximum dose values (e.g. 2109, 1231, 648) come from
     - Every intermediate number and formula
     """)
 
