@@ -306,6 +306,111 @@ TSP  = {dmax['tsp']} × max(0, 1 - {x:.4f}/0.667) = {tsp_g:.2f} g/decimal
     - Phosphorus channel is the weakest link in the whole pipeline.
     """)
 
+    # ---------- Three important explanations ----------
+    with st.expander("🔍 What is Leave-One-Crop-Out validation? Click to understand", expanded=False):
+        st.markdown("""
+        ### Normal cross-validation vs Leave-One-Crop-Out
+
+        **Normal 5-fold cross-validation** (what most papers report):
+        - Randomly split the 333 rows into 5 groups
+        - Train on 4 groups, test on 1 group
+        - Because the same crops appear in both train and test, the model can simply memorise  
+          the maximum dose of each crop and look very accurate (R² ≈ 0.99)
+
+        **Leave-One-Crop-Out (LOCO)**:
+        - Completely remove **all 37 rows** of one crop (e.g. all Boro BRRI 29 data)
+        - Train the model only on the other 8 crops
+        - Then test on the held-out crop
+
+        Result from the thesis (Random Forest):
+
+        | Validation method       | Urea R² | Urea MAE (g/decimal) |
+        |-------------------------|---------|----------------------|
+        | Normal 5-fold           | 0.996   | 26.25                |
+        | Leave-One-Crop-Out      | 0.252   | **210.05**           |
+
+        The error jumped **8 times**.  
+
+        This proves the model was mostly **memorising the nine crop-specific maximum doses**  
+        rather than learning a real general relationship between soil nutrients and fertilizer need.
+
+        That is why the thesis says the system is valid **only for the nine rice varieties**  
+        that were in the training table.
+        """)
+
+    with st.expander("🔍 Why is Calibration error ~20× larger than Model error (in money)? Click to understand", expanded=False):
+        st.markdown("""
+        ### The numbers from the thesis (Section 4.4)
+
+        For Boro rice (BRRI 29) the full recommended fertilizer costs about **Tk 24,478 per hectare**.
+
+        When they propagated the errors through the whole pipeline they found:
+
+        | Error source              | Money loss (Tk / hectare) | Share of fertilizer bill |
+        |---------------------------|---------------------------|--------------------------|
+        | **Calibration error** (Stage A) | **1,430 – 4,476**     | 5.8% – 18.3%             |
+        | Model error (Stage B)     | only **64**               | 0.3%                     |
+
+        → Calibration error is roughly **20–70 times larger** than the model error.
+
+        ### Why this happens
+
+        1. The Random Forest (or the closed-form equation) is almost perfect at reproducing  
+           the FRG-2018 table → very small model error.
+        2. But the input to that model is the **calibrated sensor reading**.
+        3. The sensor (especially phosphorus and nitrogen) has large calibration residual.
+        4. A small error in the soil-test index \( x \) is multiplied by the large maximum doses  
+           (2109 g urea, 1231 g MoP, etc.) and becomes a big error in fertilizer amount.
+        5. That fertilizer error, multiplied by the price of urea/TSP/MoP, becomes a large money error.
+
+        **Conclusion from the thesis**:  
+        Improving the recommendation model (Stage B) gives almost no benefit.  
+        The real bottleneck is the quality of the sensor calibration (Stage A).
+        """)
+
+    with st.expander("🔍 If N and P are not accurate, what is the significance of this sensor? Click to understand", expanded=False):
+        st.markdown("""
+        ### Honest answer from the thesis
+
+        The sensor is **not equally good for all three nutrients**:
+
+        | Nutrient   | Calibration quality      | Practical usefulness                          |
+        |------------|--------------------------|-----------------------------------------------|
+        | Potassium  | Strong (p < 0.001)       | **Quantitatively usable**                     |
+        | Nitrogen   | Weak (p = 0.029)         | Only rough indication                         |
+        | Phosphorus | Almost none (p = 0.458)  | **Not usable for quantitative dose**          |
+
+        ### So what is the real significance of the sensor?
+
+        1. **It is still useful for Potassium**  
+           The K channel is the only one that calibrates reliably.  
+           For potassium dose the system is quantitatively supported.
+
+        2. **It can give a fertility class, not a precise dose, for N and P**  
+           Even if the exact number is wrong, the sensor can still tell you  
+           “this soil is low / medium / high” in a rough sense.  
+           That is better than applying a completely blind blanket dose.
+
+        3. **Cost and coverage advantage**  
+           - Laboratory test costs Tk 440 (economic cost) and takes days  
+           - This sensor costs almost nothing per reading and gives instant result  
+           - National laboratory capacity reaches only a tiny fraction of 16.88 million farm households  
+           - A shared sensor (Tk 283 per farmer in a group) can reach far more people
+
+        4. **It forces honesty about uncertainty**  
+           The thesis contribution is not “the sensor is perfect”.  
+           The contribution is: we measured the uncertainty of each nutrient separately  
+           and declared that only potassium is currently trustworthy.
+
+        ### Bottom line
+
+        The sensor is **serviceable as shared measurement infrastructure for one nutrient (K)**,  
+        informative for a second (N), and not yet trustworthy for the third (P).  
+
+        That is still better than no measurement at all for the majority of Bangladeshi farmers  
+        who currently receive no soil-test-based recommendation.
+        """)
+
 else:
     st.markdown("""
     ### How to use this learning app
@@ -314,12 +419,14 @@ else:
     2. Choose a rice variety  
     3. Click **Run Full Pipeline**
 
-    You will see:
+    You will see explanations for:
     - How **Ordinary Least Squares regression** calibrates the sensor (Stage A)
     - Why **Potassium p < 0.001** is considered trustworthy
-    - How **Random Forest** works and why the closed-form equation is equivalent (Stage B)
-    - Where the maximum dose values (e.g. 2109, 1231, 648) come from
-    - Every intermediate number and formula
+    - How **Random Forest** works and why the closed-form is equivalent (Stage B)
+    - Where the maximum dose values (2109, 1231, 648…) come from
+    - What **Leave-One-Crop-Out** validation means and why it is important
+    - Why **Calibration error is ~20× larger** than model error in money terms
+    - If N and P are weak, **what is still the significance of this sensor**
     """)
 
 st.divider()
